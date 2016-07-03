@@ -3,6 +3,7 @@ UDP Remote Control
 
 Please refer to www.pikoder.com for more information
 
+last change: 06.25.16 - implemented time out framework
 last change: 05.29.16 - initial release
 
 Copyright 2016 Gregor Schlechtriem
@@ -34,6 +35,8 @@ limitations under the License.
 SoftwareSerial esp8266(11, 12); // RX, TX
 Servo myChan1;
 Servo myChan2;
+int iTimeOut = 0;
+
 
 void setup() {
   Serial.begin(19200);
@@ -63,21 +66,65 @@ void setup() {
 
 void loop() {
   if (esp8266.available()){
-    if (esp8266.find("+IPD,6:")) {
+    if (esp8266.find("+IPD,")) {          // message 
       delay(10);                          // make sure that all chars were received...
-      for (int i = 0; i < cNumChan; i++) {    
-        int Command = esp8266.read();
-        if (Command == 255) { 
-          int chanNo = esp8266.read();
-          int servoPos = esp8266.read();
-          debug("Command = " + String(Command)+ " Channel: " + String(chanNo)+ " ServoPos: " + String(servoPos));
-          servoPos = map(servoPos,0,254,45,135);  
-          if (chanNo == 0) { 
-            myChan1.write(servoPos);   // set to position
-          } else {
-            myChan2.write(servoPos);   // write actual position       
+      int MessageLength = esp8266.read() - '0';
+      switch (MessageLength) {
+        
+        case 2: // request time out
+          if (esp8266.find("T?")) {
+            debug("Message = T?");
+            String cTimeOut = String(iTimeOut);       
+            if (iTimeOut < 10) cTimeOut = '0' + cTimeOut;
+            if (iTimeOut < 100) cTimeOut = '0' + cTimeOut;         
+            if (sendUDP(cTimeOut)) {
+              debug("TimeOut " + cTimeOut + " sent ok");
+            } else {
+              debug("Errorcode from sentUDP");
+            }
+          }  
+          break;
+          
+        case 5: // set time out 
+          if (esp8266.find("T=")) {
+             debug("Message = T=nnn");         
+             iTimeOut = 0;
+             for (int i = 0; i < 3; i++) {
+                 int NextToken = esp8266.read();
+                 debug("Next token: " + String(NextToken));                     
+                 iTimeOut = iTimeOut * 10 + (NextToken - '0');
+             }
+             if (sendUDP("!")) {
+               debug("Timeout set to: " + String(iTimeOut));
+             } else {
+               debug("Errorcode from sentUDP");
+             }
           }
-        }
+          break;
+
+        case 6: // channel settings
+          {     // see http://forum.arduino.cc/index.php?topic=44734.0
+            int nextToken = esp8266.read();  
+            for (int i = 0; i < cNumChan; i++) {    
+              int Command = esp8266.read();
+              if (Command == 255) { 
+                int chanNo = esp8266.read();
+                int servoPos = esp8266.read();
+                debug("Command = " + String(Command)+ " Channel: " + String(chanNo)+ " ServoPos: " + String(servoPos));
+                servoPos = map(servoPos,0,254,45,135);  
+                if (chanNo == 0) { 
+                  myChan1.write(servoPos);   // set to position
+                } else {
+                  myChan2.write(servoPos);   // write actual position       
+                } 
+              }
+            }
+          }
+          break;
+
+        default:
+          debug("Wrong UDP Command with message length of: " + String(MessageLength));
+          break;
       }
     }
   }
@@ -101,7 +148,7 @@ boolean configUDP()
 
   succes &= (sendCom("AT+CIPMODE=0", "OK"));
   succes &= (sendCom("AT+CIPMUX=0", "OK"));
-  succes &= sendCom("AT+CIPSTART=\"UDP\",\"192.168.4.255\",90,91", "OK"); //UDP Bidirectional and Broadcast
+  succes &= sendCom("AT+CIPSTART=\"UDP\",\"192.168.4.255\",8081,91", "OK"); //UDP Bidirectional and Broadcast
   return succes;
 }
 
