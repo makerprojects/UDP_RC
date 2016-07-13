@@ -3,6 +3,7 @@ UDP Remote Control
 
 Please refer to www.pikoder.com for more information
 
+last change: 07.13.16 - implemented time out 
 last change: 06.25.16 - implemented time out framework
 last change: 05.29.16 - initial release
 
@@ -29,6 +30,10 @@ limitations under the License.
 #define Channel_1 9
 #define Channel_2 10
 
+// define fail safe position for each channel - range 0 .. 180 degrees
+#define Channel_1_Failsafe 90
+#define Channel_2_Failsafe 90
+
 #include <SoftwareSerial.h>
 #include <Servo.h>
 
@@ -36,6 +41,7 @@ SoftwareSerial esp8266(11, 12); // RX, TX
 Servo myChan1;
 Servo myChan2;
 int iTimeOut = 0;
+long StartTimer, CurrentTimer;
 
 
 void setup() {
@@ -54,14 +60,17 @@ void setup() {
     debug("UDP ready");
   }
   
-  //shorter Timeout for faster wrong UPD-Comands handling
+    //shorter Timeout for faster wrong UPD-Comands handling
     esp8266.setTimeout(1000);
    
     myChan1.attach(Channel_1);
-    myChan1.write(90);   // neutral position     
+    myChan1.write(Channel_1_Failsafe);   // fail safe position     
 
     myChan2.attach(Channel_2);
-    myChan2.write(90);   // neutral position     
+    myChan2.write(Channel_2_Failsafe);   // fail safe position
+
+    // start time out if set
+    if (iTimeOut != 0) StartTimer = millis();
 }
 
 void loop() {
@@ -83,6 +92,7 @@ void loop() {
               debug("Errorcode from sentUDP");
             }
           }  
+          if (iTimeOut != 0) StartTimer = millis();
           break;
           
         case 5: // set time out 
@@ -100,6 +110,7 @@ void loop() {
                debug("Errorcode from sentUDP");
              }
           }
+          if (iTimeOut != 0) StartTimer = millis();
           break;
 
         case 6: // channel settings
@@ -120,6 +131,7 @@ void loop() {
               }
             }
           }
+          if (iTimeOut != 0) StartTimer = millis();
           break;
 
         default:
@@ -127,6 +139,15 @@ void loop() {
           break;
       }
     }
+    // handle time out if set
+    if (iTimeOut != 0) {
+      CurrentTimer = millis();
+      if (CurrentTimer - StartTimer > iTimeOut) {
+        myChan1.write(Channel_1_Failsafe);   // fail safe position     
+        myChan2.write(Channel_2_Failsafe);        
+      }
+      StartTimer = CurrentTimer; 
+    }   
   }
 }
 
