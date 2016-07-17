@@ -1,8 +1,9 @@
 /*
 UDP Remote Control
 
-Please refer to www.pikoder.com for more information
+Please refer to www.makerprojekte.de for more information
 
+last change: 07.16.16 - tweaked fail safe function further
 last change: 07.13.16 - implemented time out 
 last change: 06.25.16 - implemented time out framework
 last change: 05.29.16 - initial release
@@ -41,6 +42,7 @@ SoftwareSerial esp8266(11, 12); // RX, TX
 Servo myChan1;
 Servo myChan2;
 int iTimeOut = 0;
+int iChannelValues[] = {127,127}; // tweak performance by buffering values
 long StartTimer, CurrentTimer;
 
 
@@ -83,9 +85,9 @@ void loop() {
         case 2: // request time out
           if (esp8266.find("T?")) {
             debug("Message = T?");
-            String cTimeOut = String(iTimeOut);       
-            if (iTimeOut < 10) cTimeOut = '0' + cTimeOut;
-            if (iTimeOut < 100) cTimeOut = '0' + cTimeOut;         
+            String cTimeOut = String(iTimeOut / 100); // convert back to 1/10 of a sec.    
+            if (iTimeOut < 1000) cTimeOut = '0' + cTimeOut;
+            if (iTimeOut < 10000) cTimeOut = '0' + cTimeOut;         
             if (sendUDP(cTimeOut)) {
               debug("TimeOut " + cTimeOut + " sent ok");
             } else {
@@ -102,8 +104,9 @@ void loop() {
              for (int i = 0; i < 3; i++) {
                  int NextToken = esp8266.read();
                  debug("Next token: " + String(NextToken));                     
-                 iTimeOut = iTimeOut * 10 + (NextToken - '0');
+                 iTimeOut = (iTimeOut * 10 + (NextToken - '0')); 
              }
+             iTimeOut = iTimeOut * 100; // convert timeout to millis
              if (sendUDP("!")) {
                debug("Timeout set to: " + String(iTimeOut));
              } else {
@@ -122,11 +125,14 @@ void loop() {
                 int chanNo = esp8266.read();
                 int servoPos = esp8266.read();
                 debug("Command = " + String(Command)+ " Channel: " + String(chanNo)+ " ServoPos: " + String(servoPos));
-                servoPos = map(servoPos,0,254,45,135);  
-                if (chanNo == 0) { 
-                  myChan1.write(servoPos);   // set to position
-                } else {
-                  myChan2.write(servoPos);   // write actual position       
+                if (iChannelValues[chanNo] != servoPos) {
+                  iChannelValues[chanNo] = servoPos;
+                  servoPos = map(servoPos,0,254,45,135);  
+                  if (chanNo == 0) { 
+                    myChan1.write(servoPos);   // set to position
+                  } else {
+                    myChan2.write(servoPos);          
+                  }
                 } 
               }
             }
@@ -143,6 +149,7 @@ void loop() {
     if (iTimeOut != 0) {
       CurrentTimer = millis();
       if (CurrentTimer - StartTimer > iTimeOut) {
+        debug("Time out occured ... applying fail safe values");
         myChan1.write(Channel_1_Failsafe);   // fail safe position     
         myChan2.write(Channel_2_Failsafe);        
       }
