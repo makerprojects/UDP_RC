@@ -1,14 +1,16 @@
+
 /*
 UDP Remote Control
 
 Please refer to www.makerprojekte.de for more information
 
+last change: 09.11.18 - changed ports to adopt to latest udpRC settings and misc. tweaks
 last change: 07.16.16 - tweaked fail safe function further
 last change: 07.13.16 - implemented time out 
 last change: 06.25.16 - implemented time out framework
 last change: 05.29.16 - initial release
 
-Copyright 2016 Gregor Schlechtriem
+Copyright 2016 - 2018 Gregor Schlechtriem
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,16 +26,16 @@ limitations under the License.
 
 */
 
-#define DEBUG true
+#define DEBUG false
 
 #define cNumChan 2
 
 #define Channel_1 9
 #define Channel_2 10
 
-// define fail safe position for each channel - range 0 .. 180 degrees
-#define Channel_1_Failsafe 90
-#define Channel_2_Failsafe 90
+// define fail safe position for each channel - range 1000 .. 2000 milli sec
+#define Channel_1_Failsafe 1500
+#define Channel_2_Failsafe 1500
 
 #include <SoftwareSerial.h>
 #include <Servo.h>
@@ -42,7 +44,7 @@ SoftwareSerial esp8266(11, 12); // RX, TX
 Servo myChan1;
 Servo myChan2;
 int iTimeOut = 0;
-int iChannelValues[] = {127,127}; // tweak performance by buffering values
+int iChannelValues[] = {1500,1500}; // tweak performance by buffering values
 long StartTimer, CurrentTimer;
 
 
@@ -66,10 +68,10 @@ void setup() {
     esp8266.setTimeout(1000);
    
     myChan1.attach(Channel_1);
-    myChan1.write(Channel_1_Failsafe);   // fail safe position     
+    myChan1.writeMicroseconds(Channel_1_Failsafe);   // fail safe position     
 
     myChan2.attach(Channel_2);
-    myChan2.write(Channel_2_Failsafe);   // fail safe position
+    myChan2.writeMicroseconds(Channel_2_Failsafe);   // fail safe position
 
     // start time out if set
     if (iTimeOut != 0) StartTimer = millis();
@@ -118,7 +120,7 @@ void loop() {
 
         case 6: // channel settings
           {     // see http://forum.arduino.cc/index.php?topic=44734.0
-            int nextToken = esp8266.read();  
+            int nextToken = esp8266.read(); // read ':' (delimiter) 
             for (int i = 0; i < cNumChan; i++) {    
               int Command = esp8266.read();
               if (Command == 255) { 
@@ -127,11 +129,11 @@ void loop() {
                 debug("Command = " + String(Command)+ " Channel: " + String(chanNo)+ " ServoPos: " + String(servoPos));
                 if (iChannelValues[chanNo] != servoPos) {
                   iChannelValues[chanNo] = servoPos;
-                  servoPos = map(servoPos,0,254,45,135);  
+                  servoPos = 992 + servoPos * 4;
                   if (chanNo == 0) { 
-                    myChan1.write(servoPos);   // set to position
+                    myChan1.writeMicroseconds(servoPos);   // set to position
                   } else {
-                    myChan2.write(servoPos);          
+                    myChan2.writeMicroseconds(servoPos);          
                   }
                 } 
               }
@@ -176,7 +178,7 @@ boolean configUDP()
 
   succes &= (sendCom("AT+CIPMODE=0", "OK"));
   succes &= (sendCom("AT+CIPMUX=0", "OK"));
-  succes &= sendCom("AT+CIPSTART=\"UDP\",\"192.168.4.255\",8081,91", "OK"); //UDP Bidirectional and Broadcast
+  succes &= sendCom("AT+CIPSTART=\"UDP\",\"192.168.4.255\",12000,12001", "OK"); //UDP Bidirectional and Broadcast
   return succes;
 }
 
